@@ -58,3 +58,9 @@ class User(BaseModel):
         "Order",
         back_populates="user",
     )
+
+    bookings = relationship(
+        "Booking",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )

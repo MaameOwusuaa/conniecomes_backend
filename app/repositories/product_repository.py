@@ -16,10 +16,24 @@ class ProductRepository:
     def get_all(self):
         return self.db.query(Product).all()
 
+    def get_active(self):
+        return (
+            self.db.query(Product)
+            .filter(Product.is_active.is_(True))
+            .all()
+        )
+
     def get_by_id(self, product_id: int):
         return (
             self.db.query(Product)
             .filter(Product.id == product_id)
+            .first()
+        )
+
+    def get_by_external_id(self, external_id: str):
+        return (
+            self.db.query(Product)
+            .filter(Product.external_id == external_id)
             .first()
         )
 

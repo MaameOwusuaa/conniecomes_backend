@@ -27,6 +27,7 @@ from app.models import (
     CartItem,
     Order,
     OrderItem,
+    Booking
 )
 
 config = context.config

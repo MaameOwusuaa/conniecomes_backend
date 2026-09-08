@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
@@ -6,6 +6,13 @@ from app.models.base import BaseModel
 
 class Product(BaseModel):
     __tablename__ = "products"
+
+    external_id: Mapped[str] = mapped_column(
+        String(100),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
 
     name: Mapped[str] = mapped_column(
         String(255),
@@ -33,6 +40,12 @@ class Product(BaseModel):
         nullable=True,
     )
 
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        nullable=False,
+    )
+
     category_id: Mapped[int] = mapped_column(
         ForeignKey("categories.id"),
         nullable=False,
@@ -44,6 +57,6 @@ class Product(BaseModel):
     )
 
     cart_items = relationship(
-    "CartItem",
-    back_populates="product",
-)
+        "CartItem",
+        back_populates="product",
+    )

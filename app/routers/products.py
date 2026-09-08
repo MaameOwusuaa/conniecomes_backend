@@ -7,6 +7,8 @@ from app.repositories.product_repository import ProductRepository
 from app.schemas.products import (
     ProductCreate,
     ProductResponse,
+    ProductSyncRequest,
+    ProductSyncResponse,
     ProductUpdate,
 )
 from app.services.product_service import ProductService
@@ -25,6 +27,18 @@ def get_product_service(db: Session = Depends(get_db)):
         product_repository,
         category_repository,
     )
+
+
+@router.post(
+    "/sync",
+    response_model=ProductSyncResponse,
+    status_code=200,
+)
+def sync_frontend_catalog(
+    request: ProductSyncRequest,
+    service: ProductService = Depends(get_product_service),
+):
+    return service.sync_frontend_catalog(request)
 
 
 @router.post(
@@ -47,6 +61,17 @@ def get_products(
     service: ProductService = Depends(get_product_service),
 ):
     return service.get_all_products()
+
+
+@router.get(
+    "/external/{external_id}",
+    response_model=ProductResponse,
+)
+def get_product_by_external_id(
+    external_id: str,
+    service: ProductService = Depends(get_product_service),
+):
+    return service.get_product_by_external_id(external_id)
 
 
 @router.get(
