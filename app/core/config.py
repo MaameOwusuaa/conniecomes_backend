@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +25,12 @@ class Settings(BaseSettings):
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_FROM_NUMBER: str = ""
+
+    UPLOAD_DIR: Path = (
+        Path("/tmp/uploads")
+        if os.getenv("VERCEL")
+        else Path(__file__).resolve().parents[2] / "uploads"
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

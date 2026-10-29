@@ -2,7 +2,6 @@ import base64
 import re
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
-from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -12,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.security import get_admin_user
+from app.core.config import settings
 from app.models.booking import Booking
 from app.models.contact_message import ContactMessage
 from app.models.order import Order
@@ -590,7 +590,7 @@ def upload_image(
 
     extension = "jpg" if match.group(1) == "jpeg" else match.group(1)
     filename = f"{uuid4().hex}.{extension}"
-    upload_dir = Path(__file__).resolve().parents[2] / "uploads"
+    upload_dir = settings.UPLOAD_DIR
     upload_dir.mkdir(parents=True, exist_ok=True)
     (upload_dir / filename).write_bytes(content)
     return {"image_url": f"/uploads/{filename}"}

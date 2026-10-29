@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from fastapi import FastAPI
 from fastapi import APIRouter
 from fastapi.staticfiles import StaticFiles
@@ -10,6 +8,7 @@ from app.routers.booking import router as booking_router
 from app.routers.admin import router as admin_router
 from app.routers.services import router as services_router
 from app.routers.contact import router as contact_router
+from app.core.config import settings
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
@@ -50,7 +49,7 @@ app.include_router(admin_router)
 app.include_router(services_router)
 app.include_router(contact_router)
 
-uploads_path = Path(__file__).resolve().parents[1] / "uploads"
+uploads_path = settings.UPLOAD_DIR
 uploads_path.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=uploads_path), name="uploads")
 
