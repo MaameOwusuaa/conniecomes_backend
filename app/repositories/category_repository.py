@@ -23,6 +23,13 @@ class CategoryRepository:
             .first()
         )
 
+    def get_by_ids(self, category_ids: list[int]) -> list[Category]:
+        return (
+            self.db.query(Category)
+            .filter(Category.id.in_(category_ids))
+            .all()
+        )
+
     def get_by_name(self, name: str):
         return (
             self.db.query(Category)

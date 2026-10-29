@@ -7,6 +7,7 @@ from app.models.cart import Cart
 from app.models.order import Order
 from app.models.payment import Payment
 from app.models.product import Product
+from app.models.product_variant import ProductVariant
 from app.repositories.payment_repository import PaymentRepository
 from app.services.paystack_service import PaystackService
 
@@ -23,9 +24,9 @@ class PaymentService:
 
     def create_payment(
         self,
-        user_id: int,
         order_id: int,
         payment_method: str,
+        guest_access_token: str,
     ) -> Payment:
 
         # Find the order
@@ -33,7 +34,7 @@ class PaymentService:
             self.db.query(Order)
             .filter(
                 Order.id == order_id,
-                Order.user_id == user_id,
+                Order.guest_access_token == guest_access_token,
             )
             .first()
         )
@@ -94,7 +95,7 @@ class PaymentService:
 
         # Initialize transaction with Paystack
         paystack_data = self.paystack.initialize_transaction(
-            email=order.user.email,
+            email=order.customer_email,
             amount=amount_in_pesewas,
             reference=transaction_reference,
         )
@@ -107,8 +108,8 @@ class PaymentService:
 
     def verify_payment(
         self,
-        user_id: int,
         payment_id: int,
+        guest_access_token: str,
     ) -> Payment:
 
         # Find the payment
@@ -127,10 +128,9 @@ class PaymentService:
         if not order:
             raise ValueError("Order not found.")
 
-        # Make sure the order belongs to the logged-in user
-        if order.user_id != user_id:
+        if order.guest_access_token != guest_access_token:
             raise ValueError(
-                "You do not have access to this payment."
+                "Invalid guest order access token."
             )
 
         # Prevent duplicate payment
@@ -144,10 +144,10 @@ class PaymentService:
                 "This order has already been paid."
             )
 
-        # Find the user's cart
+        # Find the guest's cart
         cart = (
             self.db.query(Cart)
-            .filter(Cart.user_id == user_id)
+            .filter(Cart.guest_session_id == order.guest_session_id)
             .first()
         )
 
@@ -177,40 +177,47 @@ class PaymentService:
                 "the order amount."
             )
 
-        # Check stock before making any changes
+        inventory_totals = {}
         for order_item in order.order_items:
-
-            product = (
-                self.db.query(Product)
-                .filter(
-                    Product.id == order_item.product_id
-                )
-                .first()
+            key = (
+                ("variant", order_item.variant_id)
+                if order_item.variant_id
+                else ("product", order_item.product_id)
             )
+            inventory_totals[key] = inventory_totals.get(key, 0) + order_item.quantity
 
-            if not product:
-                raise ValueError(
-                    f"Product {order_item.product_id} "
-                    "not found."
+        inventory_to_decrement = []
+        for (inventory_type, inventory_id), quantity in inventory_totals.items():
+            if inventory_type == "variant":
+                variant = (
+                    self.db.query(ProductVariant)
+                    .filter(ProductVariant.id == inventory_id)
+                    .with_for_update()
+                    .first()
                 )
-
-            if product.stock_quantity < order_item.quantity:
-                raise ValueError(
-                    f"Not enough stock for {product.name}."
+                if not variant:
+                    raise ValueError("The selected product variant is no longer available.")
+                if variant.stock_quantity < quantity:
+                    raise ValueError(
+                        f"Not enough stock for {variant.product.name}"
+                        f" ({variant.color}, {variant.length_inches} inches)."
+                    )
+                inventory_to_decrement.append((variant, quantity))
+            else:
+                product = (
+                    self.db.query(Product)
+                    .filter(Product.id == inventory_id)
+                    .with_for_update()
+                    .first()
                 )
+                if not product:
+                    raise ValueError(f"Product {inventory_id} not found.")
+                if product.stock_quantity < quantity:
+                    raise ValueError(f"Not enough stock for {product.name if product else 'product'}.")
+                inventory_to_decrement.append((product, quantity))
 
-        # Reduce inventory
-        for order_item in order.order_items:
-
-            product = (
-                self.db.query(Product)
-                .filter(
-                    Product.id == order_item.product_id
-                )
-                .first()
-            )
-
-            product.stock_quantity -= order_item.quantity
+        for inventory_item, quantity in inventory_to_decrement:
+            inventory_item.stock_quantity -= quantity
 
         # Mark payment as successful
         payment.status = "successful"

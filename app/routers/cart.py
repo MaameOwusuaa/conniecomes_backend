@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, status
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import get_current_user
-from app.models.user import User
 from app.repositories.cart_repositories import CartRepository
 from app.repositories.product_repository import ProductRepository
 from app.schemas.cart import (
@@ -33,15 +33,27 @@ def get_cart_service(
     )
 
 
+def get_guest_session_id(
+    guest_session_id: str = Header(alias="X-Guest-Session"),
+) -> str:
+    try:
+        return str(UUID(guest_session_id))
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A valid guest session ID is required.",
+        ) from error
+
+
 @router.get(
     "",
     response_model=CartResponse,
 )
 def get_cart(
-    current_user: User = Depends(get_current_user),
+    guest_session_id: str = Depends(get_guest_session_id),
     service: CartService = Depends(get_cart_service),
 ):
-    return service.get_cart(current_user.id)
+    return service.get_cart(guest_session_id)
 
 
 @router.post(
@@ -51,43 +63,43 @@ def get_cart(
 )
 def add_item_to_cart(
     item: CartItemCreate,
-    current_user: User = Depends(get_current_user),
+    guest_session_id: str = Depends(get_guest_session_id),
     service: CartService = Depends(get_cart_service),
 ):
     return service.add_item(
-        current_user.id,
+        guest_session_id,
         item,
     )
 
 
 @router.put(
-    "/items/{product_id}",
+    "/items/{cart_item_id}",
     response_model=CartItemResponse,
 )
 def update_cart_item(
-    product_id: int,
+    cart_item_id: int,
     item: CartItemUpdate,
-    current_user: User = Depends(get_current_user),
+    guest_session_id: str = Depends(get_guest_session_id),
     service: CartService = Depends(get_cart_service),
 ):
     return service.update_item(
-        current_user.id,
-        product_id,
+        guest_session_id,
+        cart_item_id,
         item,
     )
 
 
 @router.delete(
-    "/items/{product_id}",
+    "/items/{cart_item_id}",
 )
 def remove_cart_item(
-    product_id: int,
-    current_user: User = Depends(get_current_user),
+    cart_item_id: int,
+    guest_session_id: str = Depends(get_guest_session_id),
     service: CartService = Depends(get_cart_service),
 ):
     return service.remove_item(
-        current_user.id,
-        product_id,
+        guest_session_id,
+        cart_item_id,
     )
 
 
@@ -95,7 +107,7 @@ def remove_cart_item(
     "",
 )
 def clear_cart(
-    current_user: User = Depends(get_current_user),
+    guest_session_id: str = Depends(get_guest_session_id),
     service: CartService = Depends(get_cart_service),
 ):
-    return service.clear_cart(current_user.id)
+    return service.clear_cart(guest_session_id)

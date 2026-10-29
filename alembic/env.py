@@ -17,7 +17,6 @@ sys.path.append(os.getcwd())
 
 from app.core.config import settings
 from app.models.base import Base
-from app.models.category import Category  # noqa: F401
 
 from app.models import (
     User,
@@ -27,7 +26,9 @@ from app.models import (
     CartItem,
     Order,
     OrderItem,
-    Booking
+    Payment,
+    Booking,
+    EmailVerification
 )
 
 config = context.config

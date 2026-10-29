@@ -8,6 +8,10 @@ from app.models.order import Order
 from app.models.order_items import OrderItem
 from app.models.payment import Payment
 from app.models.booking import Booking
+from app.models.email_verification import EmailVerification
+from app.models.service import Service
+from app.models.product_variant import ProductVariant, VariantImage
+from app.models.contact_message import ContactMessage
 
 __all__ = [
     "User", 
@@ -21,4 +25,9 @@ __all__ = [
     "OrderItem",
     "Payments",
     "Booking",
+    "EmailVerification",
+    "Service",
+    "ProductVariant",
+    "VariantImage",
+    "ContactMessage",
     ]

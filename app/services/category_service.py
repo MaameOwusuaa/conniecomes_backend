@@ -67,6 +67,20 @@ class CategoryService:
     def delete_category(self, category_id: int):
         category = self.get_category_by_id(category_id)
 
+        for product in list(category.products):
+            remaining_categories = [
+                assigned_category
+                for assigned_category in product.categories
+                if assigned_category.id != category.id
+            ]
+            if not remaining_categories:
+                self.repository.db.delete(product)
+                continue
+
+            product.categories = remaining_categories
+            if product.category_id == category.id:
+                product.category_id = remaining_categories[0].id
+
         self.repository.delete(category)
 
         return {

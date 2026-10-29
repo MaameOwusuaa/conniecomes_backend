@@ -12,16 +12,22 @@ class BookingService:
 
     def create_booking(
         self,
-        user_id: int,
+        customer_name: str,
+        customer_email: str,
+        customer_phone: str,
         service: str,
         booking_date,
+        booking_time,
         notes: str | None = None,
     ) -> Booking:
 
         return self.repository.create(
-            user_id=user_id,
+            customer_name=customer_name,
+            customer_email=customer_email,
+            customer_phone=customer_phone,
             service=service,
             booking_date=booking_date,
+            booking_time=booking_time,
             notes=notes,
         )
 
@@ -56,8 +62,8 @@ class BookingService:
         user_id: int,
         service=None,
         booking_date=None,
+        booking_time=None,
         notes=None,
-        status=None,
     ) -> Booking:
 
         booking = self.get_booking(
@@ -71,11 +77,11 @@ class BookingService:
         if booking_date is not None:
             booking.booking_date = booking_date
 
+        if booking_time is not None:
+            booking.booking_time = booking_time
+
         if notes is not None:
             booking.notes = notes
-
-        if status is not None:
-            booking.status = status
 
         return self.repository.update(
             booking

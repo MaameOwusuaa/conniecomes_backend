@@ -1,9 +1,9 @@
 # t4g-cohort5-final-project
 # Conniecomes Beauty Salon API
 
-A production-oriented REST API for **Conniecomes Beauty Salon**, built with **FastAPI**, **SQLAlchemy**, **MySQL**, and **JWT authentication**.
+A production-oriented REST API for **Conniecomes Beauty Salon**, built with **FastAPI**, **SQLAlchemy**, **MySQL**, guest shopping, and administrator JWT authentication.
 
-The API supports customer registration and authentication, product management, shopping carts, orders, payments, and salon appointment bookings.
+The API supports guest shopping, orders, payments, and salon appointment bookings, with administrator-authenticated management endpoints.
 
 
 
@@ -36,11 +36,10 @@ The API supports customer registration and authentication, product management, s
 
 The API provides:
 
-* Customer registration
-* Customer login
-* JWT-based authentication
+* Guest shopping, checkout, and appointment booking
+* Administrator JWT authentication
 * Password hashing
-* Current authenticated-user information
+* Current administrator information
 * Product management
 * Product categories
 * Shopping cart management
@@ -48,7 +47,8 @@ The API provides:
 * Payment management
 * Salon appointment booking
 * Appointment updates and cancellation
-* User-specific data access
+* Customer contact messages delivered to the administrator dashboard
+* Administrator-protected management data
 * MySQL database persistence
 * SQLAlchemy ORM
 * Alembic database migrations
@@ -112,6 +112,7 @@ app/
 │   ├── user.py
 │   ├── category.py
 │   ├── product.py
+│   ├── product_variant.py
 │   ├── cart.py
 │   ├── cart_item.py
 │   ├── order.py
@@ -122,6 +123,7 @@ app/
 ├── repositories/
 │   ├── user_repository.py
 │   ├── product_repository.py
+│   ├── product_variant_repository.py
 │   ├── cart_repository.py
 │   ├── order_repository.py
 │   ├── payment_repository.py
@@ -232,6 +234,19 @@ SECRET_KEY=your-secret-key
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
+# Booking status notifications (SMTP STARTTLS, usually port 587)
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=your-smtp-username
+SMTP_PASSWORD=your-smtp-password
+EMAIL_FROM=appointments@example.com
+SMTP_USE_TLS=true
+
+# Twilio SMS
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_FROM_NUMBER=
+
 
 Do **not** commit `.env` to GitHub.
 
@@ -240,6 +255,13 @@ The `.env` file should be included in `.gitignore`:
 gitignore
 .env
 
+
+Booking status changes trigger an email and SMS to the contact details saved
+with the booking. Configure both providers above to enable both channels. If
+delivery fails or provider settings are incomplete, the status remains updated
+and the admin dashboard reports which notification was not sent; details are
+written to the backend log. Store real credentials only in the untracked
+`.env` file or your deployment's secret manager.
 
 
 
@@ -314,7 +336,7 @@ The database schema should be kept synchronized with the SQLAlchemy models throu
 Start the FastAPI development server with:
 
 
-uvicorn main:app --reload
+uvicorn app.main:app --reload --port 8000
 
 
 The API will normally be available at:
@@ -354,18 +376,15 @@ http://127.0.0.1:8000/redoc
 
 # Authentication
 
-The API uses JWT bearer authentication.
+Only administrators use JWT bearer authentication. Customers can shop, check out, and book appointments without an account.
 
-A customer first registers:
-
-http
-POST /auth/register
-
-
-Then logs in:
+An administrator signs in:
 
 http
-POST /auth/login
+POST /auth/admin/login
+
+
+The admin dashboard uses the returned JWT for protected management requests.
 
 
 A successful login returns:
@@ -383,52 +402,50 @@ http
 Authorization: Bearer JWT_TOKEN
 
 
-Protected endpoints use the authenticated user to determine which customer owns the requested data.
+Protected management endpoints require an authenticated administrator.
 
 
 
 # Authentication Endpoints
 
-## Register
+## Administrator Login
 
 http
-POST /auth/register
+POST /auth/admin/login
 
 
-Creates a new customer account.
+Authenticates the administrator account.
 
 Example request:
 
 json
 {
-    "first_name": "Maame",
-    "last_name": "Ofori",
-    "email": "customer@example.com",
-    "password": "password123"
+    "email": "admin@example.com",
+    "password": "your-admin-password"
 }
 
 
 Successful response:
 
 http
-201 Created
+200 OK
 
 
 
 
-## Login
+## Administrator Login Response
 
 http
-POST /auth/login
+POST /auth/admin/login
 
 
-Authenticates a customer.
+Authenticates the administrator.
 
 Example request:
 
 json
 {
-    "email": "customer@example.com",
+    "email": "admin@example.com",
     "password": "password123"
 }
 
@@ -488,9 +505,14 @@ Typical product operations include:
 
 GET     /products
 GET     /products/{product_id}
+GET     /products/{product_id}/variants
 POST    /products
 PUT     /products/{product_id}
 DELETE  /products/{product_id}
+POST    /products/{product_id}/variants
+GET     /products/{product_id}/variants/manage
+PUT     /products/{product_id}/variants/{variant_id}
+DELETE  /products/{product_id}/variants/{variant_id}
 
 
 Products can contain information such as:
@@ -501,8 +523,18 @@ Products can contain information such as:
 * Stock quantity
 * Image URL
 * Category
+* Color/length variants with separate images, prices and stock
 
 Administrative operations should be protected from unauthorized customers.
+
+Product synchronization and all product/category write endpoints require an
+administrator bearer token. Product images uploaded through the admin dashboard
+are stored under `backend/uploads/` and served from `/uploads/`.
+
+Variant retrieval is public. Variant creation, editing, deletion and inventory
+updates require administrator authorization. Cart items accept `variant_id` and
+remain distinct by product/variant combination. Order items snapshot the selected
+color, length and unit price.
 
 
 
@@ -867,6 +899,76 @@ These relationships allow the API to associate customer activity with the correc
 
 # Frontend Integration
 
+## Admin Dashboard
+
+Open `pages/admin.html` while the frontend is served from an allowed CORS origin.
+The dashboard requires a signed-in account whose database row has `is_admin = 1`.
+Public registration always creates a non-admin account; promote a trusted account
+directly through a secured database session rather than adding a public role-change
+endpoint.
+
+For a trusted account that has already been created, an authorized database
+operator can grant access with:
+
+```sql
+UPDATE users SET is_admin = 1 WHERE email = 'admin@example.com';
+```
+
+Apply the latest database migration before starting the API. If the old
+`owusuaa` environment points to a different machine, create a local environment:
+
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+alembic upgrade head
+python -m app.create_admin
+uvicorn app.main:app --reload --port 8000
+```
+
+The bootstrap command prompts for the administrator password without echoing it
+and stores only a salted password hash. The configured email defaults to
+`otrish95@gmail.com`; change it only through the backend `ADMIN_EMAIL` environment
+setting. Admin credentials cannot be created through public registration or
+customer sign-in.
+
+The migrations add the service catalog, optional product length, product variants,
+variant images and nullable cart/order references. The dashboard uses these
+administrator-only endpoints:
+
+```text
+POST   /admin/uploads
+GET    /admin/bookings
+PATCH  /admin/bookings/{booking_id}
+GET    /admin/orders
+PATCH  /admin/orders/{order_id}/delivery-status
+DELETE /admin/transactions/cleared
+GET    /admin/customers
+GET    /admin/customers/{customer_id}
+GET    /admin/contact-messages
+GET    /admin/analytics?period=daily|weekly|monthly|quarterly|yearly
+POST   /contact-messages
+POST   /services
+PUT    /services/{service_id}
+DELETE /services/{service_id}
+```
+
+Revenue includes only payments confirmed as `successful` by the payment provider.
+Paid orders include an administrator-editable delivery status: `pending`,
+`preparing`, `out_for_delivery`, `delivered`, or `delivery_failed`. Applying the
+latest migration adds this field to existing orders, defaulting them to
+`pending`.
+Contact messages submitted through the storefront are saved in the database and
+shown in the administrator dashboard alongside bookings and successful product
+purchases. Customer detail responses include linked orders, payment transactions,
+sales, and bookings. Run `alembic upgrade head` to create the contact-message table.
+Uploaded images are stored on the API server filesystem; production deployments
+should use persistent storage or an object-storage service.
+
+Products, variants, variant images, prices, and stock are served from MySQL through
+the product API. The storefront does not keep a separate browser product catalog.
+
 The frontend communicates with the API using HTTP requests.
 
 Example:
@@ -886,7 +988,7 @@ const response = await fetch(
 );
 
 
-The frontend stores the JWT after successful login and sends it with protected API requests.
+The admin frontend stores the JWT after successful administrator login and sends it with protected API requests.
 
 
 # CORS
@@ -930,7 +1032,7 @@ http://127.0.0.1:8000/docs
 
 For protected endpoints:
 
-1. Log in through `/auth/login`.
+1. Log in through `/auth/admin/login`.
 2. Copy the returned `access_token`.
 3. Authenticate in Swagger using the bearer token.
 4. Test the protected endpoints.
@@ -1080,4 +1182,3 @@ Potential future improvements include:
 The Conniecomes Beauty Salon API provides the backend foundation for the salon's e-commerce and appointment-booking platform.
 
 The API currently includes authentication, users, products, categories, carts, orders, payments, and bookings, with MySQL persistence and Alembic-managed database migrations.
-

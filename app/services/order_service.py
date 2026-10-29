@@ -1,4 +1,5 @@
 from decimal import Decimal
+from uuid import uuid4
 
 from sqlalchemy.orm import Session
 
@@ -6,7 +7,9 @@ from app.models.order import Order
 from app.models.order_items import OrderItem
 from app.models.cart import Cart
 from app.models.product import Product
+from app.models.product_variant import ProductVariant
 from app.repositories.order_repository import OrderRepository
+from app.schemas.order import GuestCheckoutCreate
 
 
 class OrderService:
@@ -18,11 +21,14 @@ class OrderService:
         self.db = db
         self.repository = repository
 
-    def create_order(self, user_id: int) -> Order:
-        # Get the user's cart
+    def create_guest_order(
+        self,
+        guest_session_id: str,
+        checkout: GuestCheckoutCreate,
+    ) -> Order:
         cart = (
             self.db.query(Cart)
-            .filter(Cart.user_id == user_id)
+            .filter(Cart.guest_session_id == guest_session_id)
             .first()
         )
 
@@ -37,7 +43,14 @@ class OrderService:
 
         # Create the order first
         order = Order(
-            user_id=user_id,
+            guest_session_id=guest_session_id,
+            guest_access_token=str(uuid4()),
+            customer_name=checkout.customer_name,
+            customer_email=str(checkout.customer_email),
+            customer_phone=checkout.customer_phone,
+            delivery_address=checkout.delivery_address,
+            region=checkout.region,
+            delivery_option=checkout.delivery_option,
             total_amount=Decimal("0.00"),
             status="pending",
         )
@@ -54,22 +67,31 @@ class OrderService:
                 .first()
             )
 
-            if not product:
+            if not product or not product.is_active:
                 raise ValueError(
                     f"Product {cart_item.product_id} not found."
                 )
+
+            variant = cart_item.variant
+            if variant and (
+                not variant.is_active
+                or variant.product_id != product.id
+            ):
+                raise ValueError(f"The selected variant for {product.name} is unavailable.")
 
             if cart_item.quantity <= 0:
                 raise ValueError(
                     f"Invalid quantity for product {product.id}."
                 )
 
-            if product.stock_quantity < cart_item.quantity:
+            stock_quantity = variant.stock_quantity if variant else product.stock_quantity
+            if stock_quantity < cart_item.quantity:
                 raise ValueError(
-                    f"Not enough stock for {product.name}."
+                    f"Not enough stock for {product.name}"
+                    f"{' (' + variant.color + ', ' + str(variant.length_inches) + ' inches)' if variant else ''}."
                 )
 
-            unit_price = Decimal(str(product.price))
+            unit_price = Decimal(str(variant.price or product.price)) if variant else Decimal(str(product.price))
 
             item_total = unit_price * cart_item.quantity
 
@@ -78,6 +100,9 @@ class OrderService:
             order_item = OrderItem(
                 order_id=order.id,
                 product_id=product.id,
+                variant_id=variant.id if variant else None,
+                variant_color=variant.color if variant else None,
+                variant_length_inches=variant.length_inches if variant else None,
                 quantity=cart_item.quantity,
                 unit_price=unit_price,
             )

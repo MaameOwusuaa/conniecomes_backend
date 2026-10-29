@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.security import get_admin_user
 from app.repositories.category_repository import CategoryRepository
 from app.schemas.category import (
     CategoryCreate,
@@ -28,6 +29,7 @@ def get_category_service(db: Session = Depends(get_db)):
 )
 def create_category(
     category: CategoryCreate,
+    _admin=Depends(get_admin_user),
     service: CategoryService = Depends(get_category_service),
 ):
     return service.create_category(category)
@@ -61,6 +63,7 @@ def get_category(
 def update_category(
     category_id: int,
     category: CategoryUpdate,
+    _admin=Depends(get_admin_user),
     service: CategoryService = Depends(get_category_service),
 ):
     return service.update_category(
@@ -74,6 +77,7 @@ def update_category(
 )
 def delete_category(
     category_id: int,
+    _admin=Depends(get_admin_user),
     service: CategoryService = Depends(get_category_service),
 ):
     return service.delete_category(category_id)

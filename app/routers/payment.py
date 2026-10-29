@@ -1,9 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.security import get_current_user
-from app.models.user import User
 from app.repositories.payment_repository import PaymentRepository
 from app.schemas.payment import PaymentCreate, PaymentResponse, PaymentInitializeResponse
 from app.services.payment_service import PaymentService
@@ -33,14 +31,13 @@ def get_payment_service(
 )
 def create_payment(
     payment: PaymentCreate,
-    current_user: User = Depends(get_current_user),
     service: PaymentService = Depends(get_payment_service),
 ):
     try:
         return service.create_payment(
-            user_id=current_user.id,
             order_id=payment.order_id,
             payment_method=payment.payment_method,
+            guest_access_token=payment.guest_access_token,
         )
 
     except ValueError as error:
@@ -56,13 +53,13 @@ response_model=PaymentResponse,
 )
 def verify_payment(
     payment_id: int,
-    current_user: User = Depends(get_current_user),
+    guest_access_token: str = Header(alias="X-Guest-Access-Token"),
     service: PaymentService = Depends(get_payment_service),
 ):
     try:
         return service.verify_payment(
-            user_id=current_user.id,
             payment_id=payment_id,
+            guest_access_token=guest_access_token,
         )
 
     except ValueError as error:

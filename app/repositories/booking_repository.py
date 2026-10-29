@@ -10,16 +10,23 @@ class BookingRepository:
 
     def create(
         self,
-        user_id: int,
+        customer_name: str,
+        customer_email: str,
+        customer_phone: str,
         service: str,
         booking_date,
+        booking_time,
         notes: str | None = None,
     ) -> Booking:
 
         booking = Booking(
-            user_id=user_id,
+            user_id=None,
+            customer_name=customer_name,
+            customer_email=customer_email,
+            customer_phone=customer_phone,
             service=service,
             booking_date=booking_date,
+            booking_time=booking_time,
             notes=notes,
             status="pending",
         )

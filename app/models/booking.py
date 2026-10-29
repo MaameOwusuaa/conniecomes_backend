@@ -9,10 +9,14 @@ from app.models.base import BaseModel
 class Booking(BaseModel):
     __tablename__ = "bookings"
 
-    user_id: Mapped[int] = mapped_column(
+    user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"),
-        nullable=False,
+        nullable=True,
     )
+
+    customer_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    customer_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    customer_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     service: Mapped[str] = mapped_column(
         String(100),

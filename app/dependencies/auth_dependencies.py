@@ -8,7 +8,7 @@ from app.services.user_service import UserService
 from app.utils.security import decode_access_token
 
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/admin/login")
 
 
 def get_user_repository(

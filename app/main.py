@@ -1,9 +1,15 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi import APIRouter
+from fastapi.staticfiles import StaticFiles
 from app.routers import auth, users, categories, products, cart
 from app.routers.order import router as order_router
 from app.routers.payment import router as payment_router
 from app.routers.booking import router as booking_router
+from app.routers.admin import router as admin_router
+from app.routers.services import router as services_router
+from app.routers.contact import router as contact_router
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
@@ -40,10 +46,16 @@ app.include_router(cart.router)
 app.include_router(order_router)
 app.include_router(payment_router)
 app.include_router(booking_router)
+app.include_router(admin_router)
+app.include_router(services_router)
+app.include_router(contact_router)
+
+uploads_path = Path(__file__).resolve().parents[1] / "uploads"
+uploads_path.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=uploads_path), name="uploads")
 
 @app.get("/")
 def root():
     return {
         "message": "API is running"
     }
-

@@ -1,13 +1,23 @@
+from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
+from sqlalchemy import or_
 
 from app.models.category import Category
+from app.models.cart_item import CartItem
 from app.models.product import Product
+from app.models.product_variant import ProductVariant, VariantImage
+from app.models.order import Order
+from app.models.order_items import OrderItem
+from app.models.payment import Payment
 from app.repositories.category_repository import CategoryRepository
 from app.repositories.product_repository import ProductRepository
+from app.repositories.product_variant_repository import ProductVariantRepository
 from app.schemas.products import (
     ProductCreate,
     ProductSyncRequest,
     ProductUpdate,
+    ProductVariantCreate,
+    ProductVariantUpdate,
 )
 
 
@@ -16,9 +26,23 @@ class ProductService:
         self,
         product_repository: ProductRepository,
         category_repository: CategoryRepository,
+        variant_repository: ProductVariantRepository,
     ):
         self.product_repository = product_repository
         self.category_repository = category_repository
+        self.variant_repository = variant_repository
+
+    def _get_categories(self, category_ids: list[int]) -> list[Category]:
+        categories_by_id = {
+            category.id: category
+            for category in self.category_repository.get_by_ids(category_ids)
+        }
+        if len(categories_by_id) != len(category_ids):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="One or more categories were not found.",
+            )
+        return [categories_by_id[category_id] for category_id in category_ids]
 
     def create_product(self, product_data: ProductCreate):
         existing = self.product_repository.get_by_external_id(
@@ -31,15 +55,8 @@ class ProductService:
                 detail="A product with this external_id already exists.",
             )
 
-        category = self.category_repository.get_by_id(
-            product_data.category_id
-        )
-
-        if not category:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Category not found.",
-            )
+        category_ids = product_data.category_ids or [product_data.category_id]
+        categories = self._get_categories(category_ids)
 
         product = Product(
             external_id=product_data.external_id,
@@ -48,7 +65,8 @@ class ProductService:
             price=product_data.price,
             stock_quantity=product_data.stock_quantity,
             image_url=product_data.image_url,
-            category_id=product_data.category_id,
+            category_id=categories[0].id,
+            categories=categories,
             is_active=True,
         )
 
@@ -110,6 +128,7 @@ class ProductService:
                 product.price = item.price
                 product.image_url = item.image_url
                 product.category_id = category.id
+                product.categories = [category]
                 product.is_active = True
                 updated += 1
             else:
@@ -121,6 +140,7 @@ class ProductService:
                     stock_quantity=item.stock_quantity,
                     image_url=item.image_url,
                     category_id=category.id,
+                    categories=[category],
                     is_active=True,
                 )
                 self.product_repository.db.add(product)
@@ -174,6 +194,9 @@ class ProductService:
         product = self.get_product_by_id(product_id)
 
         update_data = product_data.model_dump(exclude_unset=True)
+        category_ids = update_data.pop("category_ids", None)
+        if category_ids is None and update_data.get("category_id") is not None:
+            category_ids = [update_data["category_id"]]
 
         if "external_id" in update_data:
             existing = self.product_repository.get_by_external_id(
@@ -186,19 +209,10 @@ class ProductService:
                     detail="A product with this external_id already exists.",
                 )
 
-        if (
-            "category_id" in update_data
-            and update_data["category_id"] is not None
-        ):
-            category = self.category_repository.get_by_id(
-                update_data["category_id"]
-            )
-
-            if not category:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Category not found.",
-                )
+        if category_ids is not None:
+            categories = self._get_categories(category_ids)
+            product.categories = categories
+            update_data["category_id"] = categories[0].id
 
         for field, value in update_data.items():
             setattr(product, field, value)
@@ -217,3 +231,122 @@ class ProductService:
         return {
             "message": "Product deactivated successfully."
         }
+
+    def get_variants(self, product_id: int, active_only: bool = True):
+        self.get_product_by_id(product_id)
+        return self.variant_repository.get_for_product(product_id, active_only)
+
+    def create_variant(self, product_id: int, variant_data: ProductVariantCreate):
+        self.get_product_by_id(product_id)
+        if self.variant_repository.get_combination(
+            product_id,
+            variant_data.color,
+            variant_data.length_inches,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This color and length combination already exists.",
+            )
+
+        variant = ProductVariant(
+            product_id=product_id,
+            color=variant_data.color,
+            length_inches=variant_data.length_inches,
+            price=variant_data.price,
+            stock_quantity=variant_data.stock_quantity,
+            is_active=True,
+            images=[VariantImage(**image.model_dump()) for image in variant_data.images],
+        )
+        try:
+            return self.variant_repository.save(variant)
+        except IntegrityError as error:
+            self.variant_repository.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This color and length combination already exists.",
+            ) from error
+
+    def update_variant(
+        self,
+        product_id: int,
+        variant_id: int,
+        variant_data: ProductVariantUpdate,
+    ):
+        self.get_product_by_id(product_id)
+        variant = self.variant_repository.get_by_id(product_id, variant_id)
+        if not variant:
+            raise HTTPException(status_code=404, detail="Product variant not found.")
+
+        updates = variant_data.model_dump(exclude_unset=True)
+        images = updates.pop("images", None)
+        candidate_color = updates.get("color", variant.color)
+        candidate_length = updates.get("length_inches", variant.length_inches)
+        duplicate = self.variant_repository.get_combination(
+            product_id,
+            candidate_color,
+            candidate_length,
+        )
+        if duplicate and duplicate.id != variant.id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This color and length combination already exists.",
+            )
+
+        if images is not None and not images and updates.get("is_active", variant.is_active):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="An active variant must have at least one image.",
+            )
+
+        for field, value in updates.items():
+            setattr(variant, field, value)
+        if images is not None:
+            variant.images.clear()
+            variant.images.extend(VariantImage(**image.model_dump()) for image in images)
+        if updates.get("is_active") is False:
+            self.variant_repository.db.query(CartItem).filter(
+                CartItem.variant_id == variant.id
+            ).delete(synchronize_session=False)
+        if variant.is_active and not variant.images:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="An active variant must have at least one image.",
+            )
+
+        try:
+            self.variant_repository.commit()
+            return variant
+        except IntegrityError as error:
+            self.variant_repository.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This color and length combination already exists.",
+            ) from error
+
+    def delete_variant(self, product_id: int, variant_id: int):
+        self.get_product_by_id(product_id)
+        variant = self.variant_repository.get_by_id(product_id, variant_id)
+        if not variant:
+            raise HTTPException(status_code=404, detail="Product variant not found.")
+        unpaid_order_items = (
+            self.variant_repository.db.query(OrderItem.id)
+            .join(Order, Order.id == OrderItem.order_id)
+            .outerjoin(Payment, Payment.order_id == Order.id)
+            .filter(
+                OrderItem.variant_id == variant.id,
+                or_(Payment.status.is_(None), Payment.status != "successful"),
+            )
+            .count()
+        )
+        if unpaid_order_items:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This variant is referenced by an unpaid order. Deactivate it instead.",
+            )
+
+        self.variant_repository.db.query(CartItem).filter(
+            CartItem.variant_id == variant.id
+        ).delete(synchronize_session=False)
+        self.variant_repository.db.delete(variant)
+        self.variant_repository.commit()
+        return {"message": "Product variant deleted. Order snapshots were preserved."}

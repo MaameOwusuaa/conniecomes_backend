@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 class PaymentCreate(BaseModel):
     order_id: int
     payment_method: str
+    guest_access_token: str
 
 
 class PaymentResponse(BaseModel):

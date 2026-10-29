@@ -1,7 +1,24 @@
-from sqlalchemy import String
+from sqlalchemy import Column, ForeignKey, Index, String, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
+
+
+product_categories = Table(
+    "product_categories",
+    BaseModel.metadata,
+    Column(
+        "product_id",
+        ForeignKey("products.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "category_id",
+        ForeignKey("categories.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+Index("ix_product_categories_category_id", product_categories.c.category_id)
 
 
 class Category(BaseModel):
@@ -20,6 +37,7 @@ class Category(BaseModel):
 
     products = relationship(
         "Product",
-        back_populates="category",
-        cascade="all, delete-orphan",
+        secondary=product_categories,
+        back_populates="categories",
+        passive_deletes=True,
     )

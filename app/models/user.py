@@ -31,22 +31,15 @@ class User(BaseModel):
 
     is_active: Mapped[bool] = mapped_column(
         Boolean,
-        default=True,
+        default=False,
         nullable=False,
     )
 
-    """
-    orders: Mapped[list["Order"]] = relationship(
-    back_populates="user",
-    cascade="all, delete-orphan",
+    email_verified: Mapped[bool] = mapped_column(
+    Boolean,
+    default=False,
+    nullable=False,
 )
-    
-    cart: Mapped["Cart"] = relationship(
-        back_populates="user",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
-    """
     
     cart = relationship(
     "Cart",
@@ -64,3 +57,9 @@ class User(BaseModel):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+
+    email_verifications: Mapped[list["EmailVerification"]] = relationship(
+    "EmailVerification",
+    back_populates="user",
+    cascade="all, delete-orphan",
+)

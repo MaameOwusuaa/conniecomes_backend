@@ -8,10 +8,10 @@ class CartRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_cart_by_user_id(self, user_id: int):
+    def get_cart_by_guest_session_id(self, guest_session_id: str):
         return (
             self.db.query(Cart)
-            .filter(Cart.user_id == user_id)
+            .filter(Cart.guest_session_id == guest_session_id)
             .first()
         )
 
@@ -25,13 +25,22 @@ class CartRepository:
         self,
         cart_id: int,
         product_id: int,
+        variant_id: int | None = None,
     ):
+        query = self.db.query(CartItem).filter(
+            CartItem.cart_id == cart_id,
+            CartItem.product_id == product_id,
+        )
+        if variant_id is None:
+            query = query.filter(CartItem.variant_id.is_(None))
+        else:
+            query = query.filter(CartItem.variant_id == variant_id)
+        return query.first()
+
+    def get_cart_item_by_id(self, cart_id: int, cart_item_id: int):
         return (
             self.db.query(CartItem)
-            .filter(
-                CartItem.cart_id == cart_id,
-                CartItem.product_id == product_id,
-            )
+            .filter(CartItem.cart_id == cart_id, CartItem.id == cart_item_id)
             .first()
         )
 

@@ -2,6 +2,7 @@ from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import BaseModel
+from app.models.category import product_categories
 
 
 class Product(BaseModel):
@@ -35,6 +36,11 @@ class Product(BaseModel):
         nullable=False,
     )
 
+    length_inches: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
     image_url: Mapped[str | None] = mapped_column(
         String(500),
         nullable=True,
@@ -53,6 +59,11 @@ class Product(BaseModel):
 
     category = relationship(
         "Category",
+    )
+
+    categories = relationship(
+        "Category",
+        secondary=product_categories,
         back_populates="products",
     )
 
@@ -60,3 +71,14 @@ class Product(BaseModel):
         "CartItem",
         back_populates="product",
     )
+
+    variants = relationship(
+        "ProductVariant",
+        back_populates="product",
+        cascade="all, delete-orphan",
+        order_by="ProductVariant.id",
+    )
+
+    @property
+    def category_ids(self) -> list[int]:
+        return [category.id for category in self.categories]

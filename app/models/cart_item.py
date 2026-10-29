@@ -17,6 +17,12 @@ class CartItem(BaseModel):
         nullable=False,
     )
 
+    variant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("product_variants.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     quantity: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
@@ -29,3 +35,4 @@ class CartItem(BaseModel):
     )
 
     product = relationship("Product", back_populates="cart_items")
+    variant = relationship("ProductVariant", back_populates="cart_items")
